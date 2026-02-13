@@ -1,141 +1,185 @@
-# 🚀 Welcome to Z.ai Code Scaffold
+# BOM Parts Sourcing API
 
-A modern, production-ready web application scaffold powered by cutting-edge technologies, designed to accelerate your development with [Z.ai](https://chat.z.ai)'s AI-powered coding assistance.
+A server-side interface for searching electronic components across **DigiKey**, **JLCPCB**, and **Mouser** APIs. Built with Next.js 15, TypeScript, and Tailwind CSS.
 
-## ✨ Technology Stack
+## Features
 
-This scaffold provides a robust foundation built with:
+- **Multi-Supplier Search**: Search across DigiKey, JLCPCB, and Mouser simultaneously
+- **JLCPCB Ready**: Uses free JLCSearch API - no API key needed (1.5M+ parts)
+- **DigiKey OAuth**: Full OAuth2 integration with automatic token caching
+- **Mouser API**: Ready for API key configuration
+- **Real-Time Data**: Stock levels, pricing, and part specifications
+- **Server-Side Proxy**: Fixes CORS issues - works from any browser
+- **Secure**: API keys stored in environment variables, never exposed to client
 
-### 🎯 Core Framework
-- **⚡ Next.js 16** - The React framework for production with App Router
-- **📘 TypeScript 5** - Type-safe JavaScript for better developer experience
-- **🎨 Tailwind CSS 4** - Utility-first CSS framework for rapid UI development
-
-### 🧩 UI Components & Styling
-- **🧩 shadcn/ui** - High-quality, accessible components built on Radix UI
-- **🎯 Lucide React** - Beautiful & consistent icon library
-- **🌈 Framer Motion** - Production-ready motion library for React
-- **🎨 Next Themes** - Perfect dark mode in 2 lines of code
-
-### 📋 Forms & Validation
-- **🎣 React Hook Form** - Performant forms with easy validation
-- **✅ Zod** - TypeScript-first schema validation
-
-### 🔄 State Management & Data Fetching
-- **🐻 Zustand** - Simple, scalable state management
-- **🔄 TanStack Query** - Powerful data synchronization for React
-- **🌐 Fetch** - Promise-based HTTP request
-
-### 🗄️ Database & Backend
-- **🗄️ Prisma** - Next-generation TypeScript ORM
-- **🔐 NextAuth.js** - Complete open-source authentication solution
-
-### 🎨 Advanced UI Features
-- **📊 TanStack Table** - Headless UI for building tables and datagrids
-- **🖱️ DND Kit** - Modern drag and drop toolkit for React
-- **📊 Recharts** - Redefined chart library built with React and D3
-- **🖼️ Sharp** - High performance image processing
-
-### 🌍 Internationalization & Utilities
-- **🌍 Next Intl** - Internationalization library for Next.js
-- **📅 Date-fns** - Modern JavaScript date utility library
-- **🪝 ReactUse** - Collection of essential React hooks for modern development
-
-## 🎯 Why This Scaffold?
-
-- **🏎️ Fast Development** - Pre-configured tooling and best practices
-- **🎨 Beautiful UI** - Complete shadcn/ui component library with advanced interactions
-- **🔒 Type Safety** - Full TypeScript configuration with Zod validation
-- **📱 Responsive** - Mobile-first design principles with smooth animations
-- **🗄️ Database Ready** - Prisma ORM configured for rapid backend development
-- **🔐 Auth Included** - NextAuth.js for secure authentication flows
-- **📊 Data Visualization** - Charts, tables, and drag-and-drop functionality
-- **🌍 i18n Ready** - Multi-language support with Next Intl
-- **🚀 Production Ready** - Optimized build and deployment settings
-- **🤖 AI-Friendly** - Structured codebase perfect for AI assistance
-
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
+# Clone the repository
+git clone https://github.com/andrespineda/bom-parts-sourcing.git
+cd bom-parts-sourcing
+
 # Install dependencies
 bun install
 
 # Start development server
 bun run dev
-
-# Build for production
-bun run build
-
-# Start production server
-bun start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to see your application running.
+Open [http://localhost:3000](http://localhost:3000) to access the search interface.
 
-## 🤖 Powered by Z.ai
+## Configuration
 
-This scaffold is optimized for use with [Z.ai](https://chat.z.ai) - your AI assistant for:
+### JLCPCB (No Configuration Needed)
+JLCPCB uses the free JLCSearch API - works immediately without any API keys.
 
-- **💻 Code Generation** - Generate components, pages, and features instantly
-- **🎨 UI Development** - Create beautiful interfaces with AI assistance  
-- **🔧 Bug Fixing** - Identify and resolve issues with intelligent suggestions
-- **📝 Documentation** - Auto-generate comprehensive documentation
-- **🚀 Optimization** - Performance improvements and best practices
+### DigiKey API Setup
 
-Ready to build something amazing? Start chatting with Z.ai at [chat.z.ai](https://chat.z.ai) and experience the future of AI-powered development!
+1. Go to [developer.digikey.com](https://developer.digikey.com/)
+2. Create a Digi-Key API account
+3. Create a new Application
+4. Set the Redirect URI to: `http://localhost:3000`
+5. Copy the Client ID and Client Secret
+6. Add to your `.env` file:
 
-## 📁 Project Structure
+```env
+DIGIKEY_CLIENT_ID=your_client_id
+DIGIKEY_CLIENT_SECRET=your_client_secret
+```
+
+### Mouser API Setup
+
+1. Go to [mouser.com/api](https://www.mouser.com/api/)
+2. Request API access
+3. Copy your API key
+4. Add to your `.env` file:
+
+```env
+MOUSER_API_KEY=your_api_key
+```
+
+## API Endpoints
+
+### Search Parts
+
+```bash
+# GET request
+curl "http://localhost:3000/api/parts-search?value=100k&footprint=0402&suppliers=jlcpcb"
+
+# POST request
+curl -X POST http://localhost:3000/api/parts-search \
+  -H "Content-Type: application/json" \
+  -d '{"value": "1uF", "footprint": "0402", "suppliers": ["jlcpcb", "digikey"]}'
+```
+
+**Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `value` | string | Component value (e.g., "100K", "1uF") |
+| `footprint` | string | Package/footprint (e.g., "0402", "0603") |
+| `componentType` | string | Type filter (resistor, capacitor, etc.) |
+| `suppliers` | string[] | Suppliers to search: jlcpcb, digikey, mouser |
+| `limit` | number | Max results per supplier (default: 10) |
+
+### Check Configuration
+
+```bash
+curl http://localhost:3000/api/config
+```
+
+Returns the configuration status of each supplier API.
+
+## Response Format
+
+```json
+{
+  "success": true,
+  "query": {
+    "value": "100k",
+    "footprint": "0402",
+    "limit": 10
+  },
+  "results": {
+    "JLCPCB": [
+      {
+        "supplier": "JLCPCB",
+        "partNumber": "RC0402FR-07100KL",
+        "manufacturer": "YAGEO",
+        "description": "100K Ohm Resistor",
+        "footprint": "0402",
+        "stock": 2068667,
+        "price": 0.001,
+        "currency": "USD",
+        "url": "https://jlcpcb.com/partdetail/C60491",
+        "lcscPart": "C60491"
+      }
+    ]
+  },
+  "configured": {
+    "jlcpcb": true,
+    "digikey": false,
+    "mouser": false
+  }
+}
+```
+
+## Project Structure
 
 ```
 src/
-├── app/                 # Next.js App Router pages
-├── components/          # Reusable React components
-│   └── ui/             # shadcn/ui components
-├── hooks/              # Custom React hooks
-└── lib/                # Utility functions and configurations
+├── app/
+│   ├── api/
+│   │   ├── parts-search/route.ts  # Parts search API endpoint
+│   │   └── config/route.ts        # Configuration status endpoint
+│   └── page.tsx                   # Frontend UI
+├── lib/
+│   └── parts-search.ts            # API clients for DigiKey, JLCPCB, Mouser
+└── components/ui/                 # shadcn/ui components
 ```
 
-## 🎨 Available Features & Components
+## Technology Stack
 
-This scaffold includes a comprehensive set of modern web development tools:
+- **Next.js 15** - App Router, Server Components
+- **TypeScript** - Full type safety
+- **Tailwind CSS** - Styling
+- **shadcn/ui** - UI components
+- **Lucide React** - Icons
 
-### 🧩 UI Components (shadcn/ui)
-- **Layout**: Card, Separator, Aspect Ratio, Resizable Panels
-- **Forms**: Input, Textarea, Select, Checkbox, Radio Group, Switch
-- **Feedback**: Alert, Toast (Sonner), Progress, Skeleton
-- **Navigation**: Breadcrumb, Menubar, Navigation Menu, Pagination
-- **Overlay**: Dialog, Sheet, Popover, Tooltip, Hover Card
-- **Data Display**: Badge, Avatar, Calendar
+## Examples
 
-### 📊 Advanced Data Features
-- **Tables**: Powerful data tables with sorting, filtering, pagination (TanStack Table)
-- **Charts**: Beautiful visualizations with Recharts
-- **Forms**: Type-safe forms with React Hook Form + Zod validation
+### Search for Resistors
+```
+Value: 100K
+Footprint: 0402
+```
+Returns YAGEO, UniOhm, and other resistor options with stock levels.
 
-### 🎨 Interactive Features
-- **Animations**: Smooth micro-interactions with Framer Motion
-- **Drag & Drop**: Modern drag-and-drop functionality with DND Kit
-- **Theme Switching**: Built-in dark/light mode support
+### Search for Capacitors
+```
+Value: 1uF
+Footprint: 0603
+```
+Returns ceramic and MLCC capacitor options.
 
-### 🔐 Backend Integration
-- **Authentication**: Ready-to-use auth flows with NextAuth.js
-- **Database**: Type-safe database operations with Prisma
-- **API Client**: HTTP requests with Fetch + TanStack Query
-- **State Management**: Simple and scalable with Zustand
+### Search for ICs
+```
+Value: STM32F103
+Component Type: IC
+```
+Returns microcontroller variants with full specifications.
 
-### 🌍 Production Features
-- **Internationalization**: Multi-language support with Next Intl
-- **Image Optimization**: Automatic image processing with Sharp
-- **Type Safety**: End-to-end TypeScript with Zod validation
-- **Essential Hooks**: 100+ useful React hooks with ReactUse for common patterns
+## Why Server-Side?
 
-## 🤝 Get Started with Z.ai
+- **CORS-Free**: Browser CORS policies don't block server-side requests
+- **Secure**: API keys stored safely in environment variables
+- **Caching**: Token caching for OAuth APIs reduces latency
+- **Rate Limiting**: Centralized rate limit management
 
-1. **Clone this scaffold** to jumpstart your project
-2. **Visit [chat.z.ai](https://chat.z.ai)** to access your AI coding assistant
-3. **Start building** with intelligent code generation and assistance
-4. **Deploy with confidence** using the production-ready setup
+## Related Projects
 
----
+- [InteractiveHtmlBom-Enhanced](https://github.com/andrespineda/InteractiveHtmlBom-Enhanced) - KiCad plugin with integrated part search
+- [bom-sourcing-utility](https://github.com/andrespineda/bom-sourcing-utility) - Python CLI for BOM sourcing
 
-Built with ❤️ for the developer community. Supercharged by [Z.ai](https://chat.z.ai) 🚀
+## License
+
+MIT License
