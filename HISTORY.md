@@ -404,3 +404,86 @@ Returns parts like `CT41G-0402-2X1-16V-0.1uF-K(N)` (LCSC C141382) with 354K stoc
 | **Mouser API** | ✅ Working |
 | **DigiKey Sandbox** | ⚠️ Limited - needs production credentials |
 | **Code pushed to GitHub** | ✅ Yes |
+
+---
+
+## Session 4: February 2026
+
+### DigiKey Production API Fix
+
+#### Issue: DigiKey API Returning 404
+User confirmed they have production API credentials, but DigiKey search was returning 404 errors.
+
+#### Root Cause Analysis
+
+**Wrong API Endpoint**:
+- Code was using `/Products/v3/Search/Keyword` (old V3 endpoint)
+- User's DigiKey app is subscribed to **ProductInformation V4** API
+- The correct V4 endpoint is `/products/v4/search/keyword` (POST request)
+
+**User's DigiKey App Configuration** (verified via screenshot):
+- App Name: "BOM lookup" (organization: persev)
+- Status: Approved
+- APIs Enabled:
+  - Barcode
+  - MyLists
+  - OrderStatus
+  - **ProductInformation V4** ← The correct API
+  - Quote
+  - Reference APIs
+
+#### Fixes Applied
+
+1. **Updated DigiKey API Endpoint**:
+   - Changed from: `GET /Products/v3/Search/Keyword?Keyword=...`
+   - Changed to: `POST /products/v4/search/keyword` with JSON body `{"Keywords": "...", "RecordCount": N}`
+
+2. **Updated Response Parsing**:
+   - V4 response has different structure:
+     - `Description.ProductDescription` / `Description.DetailedDescription`
+     - `Manufacturer.Name`
+     - `ManufacturerProductNumber` (not `ManufacturerPartNumber`)
+     - `ProductVariations[].DigiKeyProductNumber`
+     - `ProductVariations[].QuantityAvailableforPackageType`
+     - `ProductVariations[].StandardPricing[].UnitPrice`
+   - Updated `parseProduct()` to handle V4 format
+
+3. **Environment Configuration**:
+   - Set `DIGIKEY_SANDBOX=false` (production mode)
+   - Added user's production credentials to `.env`
+   - Added `GITHUB_TOKEN` to `.env` for pushing changes
+
+#### Testing Results
+
+**All Three APIs Working** ✅:
+```bash
+curl "http://localhost:3000/api/parts-search?value=100k&footprint=0402&suppliers=jlcpcb,mouser,digikey&limit=3"
+```
+Returns:
+- JLCPCB: 3 parts (LCSC C60491, etc.)
+- Mouser: 3 parts
+- DigiKey: 10 parts (YAGEO RC0402FR-07100KL, Panasonic ERJ-2RKF1003X, etc.)
+
+**DigiKey Sample Result**:
+```json
+{
+  "supplier": "Digi-Key",
+  "partNumber": "311-100KLRTR-ND",
+  "manufacturer": "YAGEO",
+  "manufacturerPartNumber": "RC0402FR-07100KL",
+  "description": "RES 100K OHM 1% 1/16W 0402",
+  "stock": 9694401,
+  "price": 0.1,
+  "url": "https://www.digikey.com/en/products/detail/yageo/RC0402FR-07100KL/726526"
+}
+```
+
+### Session 4 Summary
+
+| Item | Status |
+|------|--------|
+| **JLCPCB API** | ✅ Working |
+| **Mouser API** | ✅ Working |
+| **DigiKey Production API** | ✅ Fixed and working |
+| **All 3 APIs** | ✅ Fully operational |
+| **Code pushed to GitHub** | Pending |

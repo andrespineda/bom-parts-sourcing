@@ -121,15 +121,21 @@ class DigiKeyClient {
       console.log('[DigiKey] Searching for:', keyword);
       console.log('[DigiKey] Client ID:', this.clientId ? `${this.clientId.substring(0, 8)}...` : 'NOT SET');
 
-      const url = `${this.apiBase}/Products/v3/Search/Keyword?Keyword=${encodeURIComponent(keyword)}&limit=${params.limit || 10}`;
+      // Use ProductInformation V4 API endpoint (POST request)
+      const url = `${this.apiBase}/products/v4/search/keyword`;
       console.log('[DigiKey] URL:', url);
 
       const response = await fetch(url, {
+        method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'X-Digikey-Client-Id': this.clientId,
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          Keywords: keyword,
+          RecordCount: params.limit || 10,
+        }),
       });
 
       console.log('[DigiKey] Response status:', response.status);
@@ -152,24 +158,36 @@ class DigiKeyClient {
   }
 
   private parseProduct(product: any, params: SearchParams): PartSearchResult {
-    const pricing = product.StandardPricing || [];
-    const unitPrice = pricing.length > 0 ? pricing[0].UnitPrice : 0;
+    // ProductInformation V4 API response format
+    const description = product.Description?.ProductDescription || product.Description?.DetailedDescription || '';
+    
+    // Get pricing from ProductVariations (first variation's first price break)
+    const variations = product.ProductVariations || [];
+    const firstVariation = variations[0] || {};
+    const pricing = firstVariation.StandardPricing || [];
+    const unitPrice = product.UnitPrice || (pricing.length > 0 ? pricing[0].UnitPrice : 0);
+    
+    // Get stock from first variation
+    const stock = firstVariation.QuantityAvailableforPackageType || 0;
+    
+    // Get DigiKey part number from first variation
+    const digiKeyPartNumber = firstVariation.DigiKeyProductNumber || '';
 
     return {
       supplier: 'Digi-Key',
-      partNumber: product.DigiKeyPartNumber || '',
+      partNumber: digiKeyPartNumber,
       manufacturer: product.Manufacturer?.Name || '',
-      manufacturerPartNumber: product.ManufacturerPartNumber || '',
-      description: product.DetailedDescription || product.ProductDescription || '',
+      manufacturerPartNumber: product.ManufacturerProductNumber || '',
+      description: description,
       value: params.value || '',
       footprint: params.footprint || '',
-      stock: product.QuantityAvailable || 0,
+      stock: stock,
       price: unitPrice,
       currency: 'USD',
-      url: product.ProductUrl || `https://www.digikey.com/product-detail/en/${product.DigiKeyPartNumber}`,
-      datasheet: product.PrimaryDatasheet || '',
+      url: product.ProductUrl || `https://www.digikey.com/product-detail/en/${digiKeyPartNumber}`,
+      datasheet: product.DatasheetUrl || '',
       package: product.Parameters?.find((p: any) => p.Parameter === 'Package / Case')?.Value || '',
-      image: product.PrimaryPhoto || '',
+      image: product.PhotoUrl || '',
       specifications: this.extractSpecifications(product.Parameters),
     };
   }
