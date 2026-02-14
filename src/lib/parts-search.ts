@@ -191,6 +191,34 @@ class DigiKeyClient {
 class JLCPCBClient {
   private jlcSearchBase = 'https://jlcsearch.tscircuit.com';
 
+  // Map component types to JLCSearch category endpoints
+  private categoryEndpoints: Record<string, string> = {
+    'resistor': 'resistors',
+    'capacitor': 'capacitors',
+    'inductor': 'inductors',
+    'led': 'leds',
+    'diode': 'diodes',
+    'transistor': 'bjt_transistors',
+    'mosfet': 'mosfets',
+    'ic': 'microcontrollers',
+    'microcontroller': 'microcontrollers',
+    'voltage regulator': 'voltage_regulators',
+    'ldo': 'ldos',
+    'switch': 'switches',
+    'relay': 'relays',
+    'fuse': 'fuses',
+    'connector': 'headers',
+    'header': 'headers',
+    'oled': 'oled_display',
+    'lcd': 'lcd_display',
+    'adc': 'adcs',
+    'dac': 'dacs',
+    'wifi': 'wifi_modules',
+    'fpga': 'fpgas',
+    'arm': 'arm_processors',
+    'risc-v': 'risc_v_processors',
+  };
+
   async search(params: SearchParams): Promise<PartSearchResult[]> {
     try {
       // Build search query
@@ -208,60 +236,98 @@ class JLCPCBClient {
       }
 
       console.log('[JLCPCB] Searching for:', searchTerm);
-      console.log('[JLCPCB] Footprint:', params.footprint);
+      console.log('[JLCPCB] Component type:', params.componentType);
 
-      const queryParams = new URLSearchParams({
-        search: searchTerm,
-        limit: String(params.limit || 20),
-        full: 'true',
-      });
+      // Determine which category endpoint to use
+      const componentType = (params.componentType || '').toLowerCase();
+      const category = this.categoryEndpoints[componentType] || 'components';
 
-      // Add package/footprint filter if provided
-      if (params.footprint) {
-        // Normalize footprint (e.g., "0402 (1005 Metric)" -> "0402")
-        const normalizedFootprint = this.normalizeFootprint(params.footprint);
-        if (normalizedFootprint) {
-          queryParams.set('package', normalizedFootprint);
+      // Try category-specific endpoint first
+      let results = await this.searchCategory(category, searchTerm, params);
+      
+      // If no results and using components fallback, try resistors/capacitors
+      if (results.length === 0 && category === 'components') {
+        // Try to infer category from search term
+        if (this.looksLikeResistor(searchTerm)) {
+          console.log('[JLCPCB] Trying resistors endpoint');
+          results = await this.searchCategory('resistors', searchTerm, params);
+        } else if (this.looksLikeCapacitor(searchTerm)) {
+          console.log('[JLCPCB] Trying capacitors endpoint');
+          results = await this.searchCategory('capacitors', searchTerm, params);
         }
       }
 
-      const url = `${this.jlcSearchBase}/components/list.json?${queryParams.toString()}`;
-      console.log('[JLCPCB] URL:', url);
-
-      const response = await fetch(url, {
-        headers: {
-          'Accept': 'application/json',
-        },
-      });
-
-      console.log('[JLCPCB] Response status:', response.status);
-
-      if (!response.ok) {
-        const error = await response.text();
-        console.error('JLCSearch API error:', response.status, error);
-        return [];
-      }
-
-      const data = await response.json();
-      const components = data.components || [];
-      console.log('[JLCPCB] Found', components.length, 'components');
-
-      // Filter and sort results
-      const results = components
-        .map((comp: any) => this.parseComponent(comp, params))
-        .filter((r: PartSearchResult) => r.partNumber || r.lcscPart);
-
-      // Sort by stock (descending) then price (ascending)
-      results.sort((a: PartSearchResult, b: PartSearchResult) => {
-        if (b.stock !== a.stock) return b.stock - a.stock;
-        return a.price - b.price;
-      });
-
+      console.log('[JLCPCB] Found', results.length, 'components');
       return results.slice(0, params.limit || 10);
     } catch (error) {
       console.error('JLCPCB search error:', error);
       return [];
     }
+  }
+
+  private looksLikeResistor(term: string): boolean {
+    // Match patterns like 100K, 10K, 1K, 100R, 10R, 4.7K, etc.
+    return /^[0-9.]+[KRkrR]/.test(term) || /ohm|resistor/i.test(term);
+  }
+
+  private looksLikeCapacitor(term: string): boolean {
+    // Match patterns like 1uF, 100nF, 10pF, etc.
+    return /^[0-9.]+[pnµu]F/i.test(term) || /capacitor|farad/i.test(term);
+  }
+
+  private async searchCategory(category: string, searchTerm: string, params: SearchParams): Promise<PartSearchResult[]> {
+    const queryParams = new URLSearchParams({
+      search: searchTerm,
+      limit: String(params.limit || 20),
+    });
+
+    // Add package/footprint filter if provided
+    if (params.footprint) {
+      const normalizedFootprint = this.normalizeFootprint(params.footprint);
+      if (normalizedFootprint) {
+        queryParams.set('package', normalizedFootprint);
+      }
+    }
+
+    const url = `${this.jlcSearchBase}/${category}/list.json?${queryParams.toString()}`;
+    console.log('[JLCPCB] URL:', url);
+
+    const response = await fetch(url, {
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+
+    console.log('[JLCPCB] Response status:', response.status);
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('JLCSearch API error:', response.status, error);
+      return [];
+    }
+
+    const data = await response.json();
+    
+    // Handle different response formats
+    let components = data.components || data[category] || data.resistors || data.capacitors || data.items || [];
+    
+    if (!Array.isArray(components)) {
+      console.log('[JLCPCB] Unexpected response format:', Object.keys(data));
+      return [];
+    }
+
+    // Filter and sort results
+    const results = components
+      .map((comp: any) => this.parseComponent(comp, params))
+      .filter((r: PartSearchResult) => r.partNumber || r.lcscPart);
+
+    // Sort by stock (descending) then price (ascending)
+    results.sort((a: PartSearchResult, b: PartSearchResult) => {
+      if (b.stock !== a.stock) return b.stock - a.stock;
+      return a.price - b.price;
+    });
+
+    return results;
   }
 
   private normalizeFootprint(footprint: string): string {
@@ -312,9 +378,9 @@ class JLCPCBClient {
       }
     }
 
-    // Extract price
+    // Extract price - handle both 'price' and 'price1' formats
     let price = 0;
-    const priceValue = comp.price || comp.unit_price;
+    const priceValue = comp.price || comp.price1 || comp.unit_price;
     if (priceValue) {
       const parsed = parseFloat(String(priceValue).replace(/,/g, ''));
       if (!isNaN(parsed)) {
@@ -322,20 +388,31 @@ class JLCPCBClient {
       }
     }
 
+    // Extract manufacturer part number - handle different field names
+    const mfrPartNo = comp.mfr || comp.mfrPartNo || comp.manufacturer_part_number || '';
+    
     // Extract manufacturer
-    const manufacturer = comp.mfr || comp.manufacturer || comp.Manufacturer || '';
+    const manufacturer = comp.manufacturer || comp.Manufacturer || '';
 
-    // Extract description
-    const description = comp.description || comp.Description || '';
+    // Extract description - build from available fields if not present
+    let description = comp.description || comp.Description || '';
+    if (!description) {
+      // For resistors, build description from resistance and package
+      if (comp.resistance !== undefined) {
+        const resistance = comp.resistance;
+        const tolerance = comp.tolerance_fraction ? `±${(comp.tolerance_fraction * 100).toFixed(1)}%` : '';
+        description = `${resistance}Ω ${tolerance}`.trim();
+      }
+    }
 
     // Extract package/footprint
     const pkg = comp.package || comp.Package || comp.footprint || '';
 
     return {
       supplier: 'JLCPCB',
-      partNumber: comp.mfrPartNo || comp.manufacturer_part_number || '',
+      partNumber: mfrPartNo,
       manufacturer,
-      manufacturerPartNumber: comp.mfrPartNo || comp.manufacturer_part_number || '',
+      manufacturerPartNumber: mfrPartNo,
       description,
       value: params.value || '',
       footprint: pkg || params.footprint || '',
