@@ -110,16 +110,21 @@ class DigiKeyClient {
         return [];
       }
 
-      const response = await fetch(
-        `${this.apiBase}/Products/v3/Search/Keyword?Keyword=${encodeURIComponent(keyword)}&limit=${params.limit || 10}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'X-Digikey-Client-Id': this.clientId,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      console.log('[DigiKey] Searching for:', keyword);
+      console.log('[DigiKey] Client ID:', this.clientId ? `${this.clientId.substring(0, 8)}...` : 'NOT SET');
+
+      const url = `${this.apiBase}/Products/v3/Search/Keyword?Keyword=${encodeURIComponent(keyword)}&limit=${params.limit || 10}`;
+      console.log('[DigiKey] URL:', url);
+
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'X-Digikey-Client-Id': this.clientId,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      console.log('[DigiKey] Response status:', response.status);
 
       if (!response.ok) {
         const error = await response.text();
@@ -129,6 +134,7 @@ class DigiKeyClient {
 
       const data = await response.json();
       const products = data.Products || [];
+      console.log('[DigiKey] Found', products.length, 'products');
 
       return products.map((product: any) => this.parseProduct(product, params));
     } catch (error) {
@@ -193,6 +199,9 @@ class JLCPCBClient {
         return [];
       }
 
+      console.log('[JLCPCB] Searching for:', searchTerm);
+      console.log('[JLCPCB] Footprint:', params.footprint);
+
       const queryParams = new URLSearchParams({
         search: searchTerm,
         limit: String(params.limit || 20),
@@ -208,14 +217,16 @@ class JLCPCBClient {
         }
       }
 
-      const response = await fetch(
-        `${this.jlcSearchBase}/components/list.json?${queryParams.toString()}`,
-        {
-          headers: {
-            'Accept': 'application/json',
-          },
-        }
-      );
+      const url = `${this.jlcSearchBase}/components/list.json?${queryParams.toString()}`;
+      console.log('[JLCPCB] URL:', url);
+
+      const response = await fetch(url, {
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+
+      console.log('[JLCPCB] Response status:', response.status);
 
       if (!response.ok) {
         const error = await response.text();
@@ -225,6 +236,7 @@ class JLCPCBClient {
 
       const data = await response.json();
       const components = data.components || [];
+      console.log('[JLCPCB] Found', components.length, 'components');
 
       // Filter and sort results
       const results = components
@@ -368,31 +380,43 @@ class MouserClient {
         return [];
       }
 
+      console.log('[Mouser] Searching for:', keyword);
+      console.log('[Mouser] API Key:', this.apiKey ? `${this.apiKey.substring(0, 8)}...` : 'NOT SET');
+
+      // Mouser API uses /search/keyword endpoint (not /product/search)
       const response = await fetch(
-        `${this.apiBase}/product/search?apiKey=${this.apiKey}`,
+        `${this.apiBase}/search/keyword?apiKey=${this.apiKey}`,
         {
           method: 'POST',
           headers: {
+            'accept': 'application/json',
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
             SearchByKeywordRequest: {
-              keyword,
+              keyword: keyword,
               records: params.limit || 10,
+              startingRecord: 0,
               searchOptions: '',
+              searchWithYourSignUpLanguage: '',
             },
           }),
         }
       );
 
+      console.log('[Mouser] Response status:', response.status);
+
       if (!response.ok) {
         const error = await response.text();
-        console.error('Mouser search error:', error);
+        console.error('Mouser search error:', response.status, error);
         return [];
       }
 
       const data = await response.json();
+      console.log('[Mouser] Response data:', JSON.stringify(data, null, 2).substring(0, 500));
+      
       const parts = data.SearchResults?.Parts || [];
+      console.log('[Mouser] Found', parts.length, 'parts');
 
       return parts.map((part: any) => this.parsePart(part, params));
     } catch (error) {
