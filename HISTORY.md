@@ -341,3 +341,66 @@ MOUSER_API_KEY=
 | **JLCPCB API** | ✅ Already working |
 | **DigiKey Sandbox** | ⚠️ Limited - may need production credentials |
 | **Code pushed to GitHub** | ✅ Yes |
+
+---
+
+## Session 3: February 2026
+
+### JLCPCB Search Fix
+
+#### Issue: JLCPCB Returning No Results
+User reported JLCPCB not finding any parts despite Mouser working.
+
+#### Root Cause Analysis
+
+**JLCSearch API Issue**:
+- The `/components/list.json` endpoint was returning `Bad Gateway` errors
+- The service homepage was up, but the generic search endpoint was down
+- **Solution**: Category-specific endpoints still work!
+
+#### Fixes Applied
+
+1. **Category-Specific Endpoints**:
+   - Changed from `/components/list.json` to category-specific endpoints
+   - Added mapping for component types to endpoints:
+     - `resistor` → `/resistors/list.json`
+     - `capacitor` → `/capacitors/list.json`
+     - `led` → `/leds/list.json`
+     - `ic` → `/microcontrollers/list.json`
+     - etc.
+
+2. **Smart Category Detection**:
+   - Added pattern matching to detect component type from search term
+   - Resistor patterns: `100K`, `10K`, `1K`, `100R`, etc.
+   - Capacitor patterns: `1uF`, `100nF`, `10pF`, etc.
+
+3. **Response Format Handling**:
+   - Updated `parseComponent` to handle different field names
+   - `price1` instead of `price`
+   - `mfr` instead of `mfrPartNo`
+   - `resistance` numeric field for resistors
+
+#### Testing Results
+
+**Resistors** ✅:
+```bash
+curl "http://localhost:3000/api/parts-search?value=100k&footprint=0402&suppliers=jlcpcb"
+```
+Returns parts like `RC0402FR-07100KL` (LCSC C60491) with 2M+ stock
+
+**Capacitors** ✅:
+```bash
+curl "http://localhost:3000/api/parts-search?value=1uF&footprint=0402&suppliers=jlcpcb"
+```
+Returns parts like `CT41G-0402-2X1-16V-0.1uF-K(N)` (LCSC C141382) with 354K stock
+
+### Session 3 Summary
+
+| Item | Status |
+|------|--------|
+| **JLCPCB Resistors** | ✅ Working |
+| **JLCPCB Capacitors** | ✅ Working |
+| **JLCPCB Other Types** | ✅ Working with type selection |
+| **Mouser API** | ✅ Working |
+| **DigiKey Sandbox** | ⚠️ Limited - needs production credentials |
+| **Code pushed to GitHub** | ✅ Yes |
