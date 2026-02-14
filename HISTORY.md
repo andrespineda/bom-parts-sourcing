@@ -487,3 +487,102 @@ Returns:
 | **DigiKey Production API** | ✅ Fixed and working |
 | **All 3 APIs** | ✅ Fully operational |
 | **Code pushed to GitHub** | Pending |
+
+---
+
+## Session 5: February 2026
+
+### BOM Upload Feature Implementation
+
+#### Feature Request
+User requested BOM upload functionality to:
+1. Upload a CSV BOM file with minimum info (Reference, Value)
+2. Automatically search and match parts across all suppliers
+3. Fill in LCSC Part #, Manufacturer Part Number, Datasheet, Description
+4. Download sourced BOM with `_sourced` appended to filename
+
+#### Priority Rules Implemented
+
+**JLCPCB Priority (Preferred - China-based, no import needed):**
+1. In stock > Out of stock (1000 points)
+2. Higher stock quantity (up to 100 points)
+3. Lower price (up to 50 points)
+4. Has LCSC part number (50 points)
+
+**DigiKey/Mouser Priority (Stock-first):**
+1. In stock > Out of stock (1000 points)
+2. Higher stock quantity (up to 100 points)
+3. Lower price (up to 50 points)
+4. Has datasheet (20 points)
+
+**Overall Supplier Priority:**
+1. JLCPCB (preferred - in China, no import needed)
+2. Digi-Key (if no JLCPCB match)
+3. Mouser (if no DigiKey match)
+
+#### Files Created/Modified
+
+**New File: `/src/app/api/bom-upload/route.ts`**
+- CSV parsing with quoted field support
+- BOM row processing with status tracking
+- Status types: `matched`, `not_found`, `skipped`, `already_sourced`
+- Auto-detection of component type from reference designator (C=capacitor, R=resistor, etc.)
+- Footprint extraction from Footprint field or CASE CODE
+- Intelligent part selection with scoring system
+- Output CSV generation with filled fields
+
+**Modified: `/src/app/page.tsx`**
+- Added tabs: "Part Search" and "BOM Upload"
+- BOM upload file drop zone
+- Processing progress indicator
+- Results summary with statistics
+- Detailed results table
+- Download button for sourced BOM
+
+#### Testing Results
+
+**Test with Minimal BOM (no LCSC numbers):**
+```
+Total: 6 items
+Matched: 5
+Skipped (DNP): 1
+Already Sourced: 0
+```
+
+| Reference | Value | Status | Match |
+|-----------|-------|--------|-------|
+| C1,C2 | 100K | ✅ Matched | JLCPCB C5137468 (15.9M stock) |
+| R1,R2,R3 | 10K | ✅ Matched | JLCPCB C25804 (37M stock) |
+| L1 | 2.2uH | ✅ Matched | Digi-Key 535-11585-2-ND (80K stock) |
+| U1 | STM32F103C8T6 | ✅ Matched | JLCPCB C52717 (211K stock) |
+| LED1 | RED | ✅ Matched | Mouser 667-ERJ-3RED3013V (19K stock) |
+| D1 | DNP | ⏭️ Skipped | Do Not Populate |
+
+**Test with Full BOM (already sourced):**
+```
+Total: 33 items
+Matched: 0
+Skipped: 1
+Already Sourced: 32
+```
+Correctly detected existing LCSC part numbers and skipped re-sourcing.
+
+#### Auto-Filled Fields
+
+When a part is matched, the following fields are filled:
+- `LCSC Part #` - From matched part
+- `JLCPCB Part #` - Same as LCSC (for compatibility)
+- `Manufacturer_Part_Number` - From matched part
+- `Manufacturer_Name` - From matched part
+- `Datasheet` - URL to datasheet if available
+- `Description` - Supplier description
+
+### Session 5 Summary
+
+| Item | Status |
+|------|--------|
+| **BOM Upload API** | ✅ Complete |
+| **Priority Logic** | ✅ JLCPCB > DigiKey > Mouser, Stock-first |
+| **Frontend UI** | ✅ Tabs, upload, results, download |
+| **Testing** | ✅ Passed |
+| **Code pushed to GitHub** | Pending |

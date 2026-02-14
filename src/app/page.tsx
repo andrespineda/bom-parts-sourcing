@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Progress } from '@/components/ui/progress'
 import { 
   Search, 
   ExternalLink, 
@@ -26,7 +27,12 @@ import {
   Radio,
   Lightbulb,
   Plug,
-  CircuitBoard
+  CircuitBoard,
+  Upload,
+  Download,
+  FileSpreadsheet,
+  Check,
+  Clock
 } from 'lucide-react'
 
 interface PartResult {
@@ -72,6 +78,38 @@ interface ConfigResponse {
   }
 }
 
+// BOM Upload interfaces
+interface BOMResultItem {
+  reference: string
+  value: string
+  status: 'matched' | 'not_found' | 'skipped' | 'already_sourced'
+  notes: string
+  matchedPart: {
+    partNumber: string
+    lcscPart: string
+    manufacturer: string
+    manufacturerPartNumber: string
+    stock: number
+    price: number
+  } | null
+}
+
+interface BOMUploadResponse {
+  success: boolean
+  filename: string
+  stats: {
+    total: number
+    matched: number
+    notFound: number
+    skipped: number
+    alreadySourced: number
+  }
+  config: ConfigStatus
+  results: BOMResultItem[]
+  csv: string
+  error?: string
+}
+
 const componentTypes = [
   { value: '', label: 'All Types', icon: CircuitBoard },
   { value: 'resistor', label: 'Resistor', icon: Zap },
@@ -96,7 +134,15 @@ const supplierBorderColors: Record<string, string> = {
   'Mouser': 'border-cyan-500',
 }
 
+const statusColors: Record<string, string> = {
+  'matched': 'bg-green-500',
+  'not_found': 'bg-red-500',
+  'skipped': 'bg-yellow-500',
+  'already_sourced': 'bg-blue-500',
+}
+
 export default function Home() {
+  // Part Search State
   const [value, setValue] = useState('')
   const [footprint, setFootprint] = useState('')
   const [componentType, setComponentType] = useState('')
@@ -111,6 +157,13 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searched, setSearched] = useState(false)
+
+  // BOM Upload State
+  const [bomFile, setBomFile] = useState<File | null>(null)
+  const [bomLoading, setBomLoading] = useState(false)
+  const [bomResult, setBomResult] = useState<BOMUploadResponse | null>(null)
+  const [bomError, setBomError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Fetch configuration status on mount
   useEffect(() => {
@@ -188,6 +241,64 @@ export default function Home() {
     }
   }
 
+  // BOM Upload Functions
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setBomFile(file)
+      setBomResult(null)
+      setBomError(null)
+    }
+  }
+
+  const handleBOMUpload = async () => {
+    if (!bomFile) {
+      setBomError('Please select a BOM file')
+      return
+    }
+
+    setBomLoading(true)
+    setBomError(null)
+    setBomResult(null)
+
+    try {
+      const formData = new FormData()
+      formData.append('file', bomFile)
+
+      const response = await fetch('/api/bom-upload', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const data = await response.json()
+
+      if (!data.success) {
+        setBomError(data.error || 'BOM processing failed')
+        return
+      }
+
+      setBomResult(data)
+    } catch (err) {
+      setBomError(err instanceof Error ? err.message : 'An error occurred')
+    } finally {
+      setBomLoading(false)
+    }
+  }
+
+  const handleDownload = () => {
+    if (!bomResult) return
+
+    const blob = new Blob([bomResult.csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = bomResult.filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   const totalResults = Object.values(results).flat().length
 
   return (
@@ -239,176 +350,391 @@ export default function Home() {
           </Card>
         </div>
 
-        {/* Search Card */}
-        <Card className="mb-8 shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Search className="h-5 w-5" />
-              Search Components
-            </CardTitle>
-            <CardDescription>
-              Enter component specifications to search across suppliers
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              {/* Value Input */}
-              <div className="space-y-2">
-                <Label htmlFor="value">Component Value</Label>
-                <Input
-                  id="value"
-                  placeholder="e.g., 100K, 1uF, 2.2nH"
-                  value={value}
-                  onChange={(e) => setValue(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                />
-              </div>
+        {/* Main Tabs: Part Search & BOM Upload */}
+        <Tabs defaultValue="search" className="w-full">
+          <TabsList className="w-full justify-start mb-6">
+            <TabsTrigger value="search" className="flex items-center gap-2">
+              <Search className="h-4 w-4" />
+              Part Search
+            </TabsTrigger>
+            <TabsTrigger value="bom" className="flex items-center gap-2">
+              <FileSpreadsheet className="h-4 w-4" />
+              BOM Upload
+            </TabsTrigger>
+          </TabsList>
 
-              {/* Footprint Input */}
-              <div className="space-y-2">
-                <Label htmlFor="footprint">Footprint / Package</Label>
-                <Input
-                  id="footprint"
-                  placeholder="e.g., 0402, 0603, SOIC-8"
-                  value={footprint}
-                  onChange={(e) => setFootprint(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                />
-              </div>
-
-              {/* Component Type */}
-              <div className="space-y-2">
-                <Label htmlFor="type">Component Type</Label>
-                <select
-                  id="type"
-                  className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm"
-                  value={componentType}
-                  onChange={(e) => setComponentType(e.target.value)}
-                >
-                  {componentTypes.map((type) => (
-                    <option key={type.value} value={type.value}>
-                      {type.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Suppliers Checkboxes */}
-              <div className="space-y-2">
-                <Label>Suppliers</Label>
-                <div className="flex flex-wrap gap-4 h-10 items-center">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <Checkbox
-                      checked={suppliers.jlcpcb}
-                      onCheckedChange={(checked) => setSuppliers({ ...suppliers, jlcpcb: !!checked })}
-                    />
-                    <span className="text-sm">JLCPCB</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <Checkbox
-                      checked={suppliers.digikey}
-                      onCheckedChange={(checked) => setSuppliers({ ...suppliers, digikey: !!checked })}
-                      disabled={!configured.digikey}
-                    />
-                    <span className={`text-sm ${!configured.digikey ? 'text-muted-foreground' : ''}`}>Digi-Key</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <Checkbox
-                      checked={suppliers.mouser}
-                      onCheckedChange={(checked) => setSuppliers({ ...suppliers, mouser: !!checked })}
-                      disabled={!configured.mouser}
-                    />
-                    <span className={`text-sm ${!configured.mouser ? 'text-muted-foreground' : ''}`}>Mouser</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            {/* Search Button */}
-            <Button 
-              onClick={searchParts} 
-              disabled={loading} 
-              className="w-full md:w-auto px-8"
-              size="lg"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Searching...
-                </>
-              ) : (
-                <>
-                  <Search className="h-4 w-4 mr-2" />
+          {/* Part Search Tab */}
+          <TabsContent value="search">
+            {/* Search Card */}
+            <Card className="mb-8 shadow-lg">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Search className="h-5 w-5" />
                   Search Components
-                </>
-              )}
-            </Button>
+                </CardTitle>
+                <CardDescription>
+                  Enter component specifications to search across suppliers
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                  {/* Value Input */}
+                  <div className="space-y-2">
+                    <Label htmlFor="value">Component Value</Label>
+                    <Input
+                      id="value"
+                      placeholder="e.g., 100K, 1uF, 2.2nH"
+                      value={value}
+                      onChange={(e) => setValue(e.target.value)}
+                      onKeyPress={handleKeyPress}
+                    />
+                  </div>
 
-            {/* Error Alert */}
-            {error && (
-              <Alert variant="destructive" className="mt-4">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Error</AlertTitle>
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-          </CardContent>
-        </Card>
+                  {/* Footprint Input */}
+                  <div className="space-y-2">
+                    <Label htmlFor="footprint">Footprint / Package</Label>
+                    <Input
+                      id="footprint"
+                      placeholder="e.g., 0402, 0603, SOIC-8"
+                      value={footprint}
+                      onChange={(e) => setFootprint(e.target.value)}
+                      onKeyPress={handleKeyPress}
+                    />
+                  </div>
 
-        {/* Results Section */}
-        {searched && (
-          <div className="space-y-6">
-            {/* Results Summary */}
-            <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">
-                Search Results
-              </h2>
-              {totalResults > 0 && (
-                <Badge variant="outline" className="text-sm px-3 py-1">
-                  {totalResults} part{totalResults !== 1 ? 's' : ''} found
-                </Badge>
-              )}
-            </div>
-
-            {totalResults === 0 && !loading ? (
-              <Card>
-                <CardContent className="py-12 text-center">
-                  <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-lg font-medium mb-2">No results found</h3>
-                  <p className="text-muted-foreground">
-                    Try adjusting your search terms or selecting different suppliers.
-                    <br />
-                    Tip: JLCPCB has the largest database with 1.5M+ parts.
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              <Tabs defaultValue={Object.keys(results)[0] || 'JLCPCB'} className="w-full">
-                <TabsList className="w-full justify-start mb-4">
-                  {Object.keys(results).map((supplier) => (
-                    <TabsTrigger key={supplier} value={supplier} className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full ${supplierColors[supplier]}`} />
-                      {supplier}
-                      <Badge variant="secondary" className="ml-1">
-                        {results[supplier as keyof SearchResults]?.length || 0}
-                      </Badge>
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-
-                {Object.entries(results).map(([supplier, parts]) => (
-                  <TabsContent key={supplier} value={supplier}>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                      {parts?.map((part, index) => (
-                        <PartCard key={`${supplier}-${index}`} part={part} />
+                  {/* Component Type */}
+                  <div className="space-y-2">
+                    <Label htmlFor="type">Component Type</Label>
+                    <select
+                      id="type"
+                      className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm"
+                      value={componentType}
+                      onChange={(e) => setComponentType(e.target.value)}
+                    >
+                      {componentTypes.map((type) => (
+                        <option key={type.value} value={type.value}>
+                          {type.label}
+                        </option>
                       ))}
+                    </select>
+                  </div>
+
+                  {/* Suppliers Checkboxes */}
+                  <div className="space-y-2">
+                    <Label>Suppliers</Label>
+                    <div className="flex flex-wrap gap-4 h-10 items-center">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox
+                          checked={suppliers.jlcpcb}
+                          onCheckedChange={(checked) => setSuppliers({ ...suppliers, jlcpcb: !!checked })}
+                        />
+                        <span className="text-sm">JLCPCB</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox
+                          checked={suppliers.digikey}
+                          onCheckedChange={(checked) => setSuppliers({ ...suppliers, digikey: !!checked })}
+                          disabled={!configured.digikey}
+                        />
+                        <span className={`text-sm ${!configured.digikey ? 'text-muted-foreground' : ''}`}>Digi-Key</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <Checkbox
+                          checked={suppliers.mouser}
+                          onCheckedChange={(checked) => setSuppliers({ ...suppliers, mouser: !!checked })}
+                          disabled={!configured.mouser}
+                        />
+                        <span className={`text-sm ${!configured.mouser ? 'text-muted-foreground' : ''}`}>Mouser</span>
+                      </label>
                     </div>
-                  </TabsContent>
-                ))}
-              </Tabs>
+                  </div>
+                </div>
+
+                {/* Search Button */}
+                <Button 
+                  onClick={searchParts} 
+                  disabled={loading} 
+                  className="w-full md:w-auto px-8"
+                  size="lg"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Searching...
+                    </>
+                  ) : (
+                    <>
+                      <Search className="h-4 w-4 mr-2" />
+                      Search Components
+                    </>
+                  )}
+                </Button>
+
+                {/* Error Alert */}
+                {error && (
+                  <Alert variant="destructive" className="mt-4">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Error</AlertTitle>
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Results Section */}
+            {searched && (
+              <div className="space-y-6">
+                {/* Results Summary */}
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">
+                    Search Results
+                  </h2>
+                  {totalResults > 0 && (
+                    <Badge variant="outline" className="text-sm px-3 py-1">
+                      {totalResults} part{totalResults !== 1 ? 's' : ''} found
+                    </Badge>
+                  )}
+                </div>
+
+                {totalResults === 0 && !loading ? (
+                  <Card>
+                    <CardContent className="py-12 text-center">
+                      <Search className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                      <h3 className="text-lg font-medium mb-2">No results found</h3>
+                      <p className="text-muted-foreground">
+                        Try adjusting your search terms or selecting different suppliers.
+                        <br />
+                        Tip: JLCPCB has the largest database with 1.5M+ parts.
+                      </p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <Tabs defaultValue={Object.keys(results)[0] || 'JLCPCB'} className="w-full">
+                    <TabsList className="w-full justify-start mb-4">
+                      {Object.keys(results).map((supplier) => (
+                        <TabsTrigger key={supplier} value={supplier} className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${supplierColors[supplier]}`} />
+                          {supplier}
+                          <Badge variant="secondary" className="ml-1">
+                            {results[supplier as keyof SearchResults]?.length || 0}
+                          </Badge>
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+
+                    {Object.entries(results).map(([supplier, parts]) => (
+                      <TabsContent key={supplier} value={supplier}>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                          {parts?.map((part, index) => (
+                            <PartCard key={`${supplier}-${index}`} part={part} />
+                          ))}
+                        </div>
+                      </TabsContent>
+                    ))}
+                  </Tabs>
+                )}
+              </div>
             )}
-          </div>
-        )}
+          </TabsContent>
+
+          {/* BOM Upload Tab */}
+          <TabsContent value="bom">
+            <Card className="mb-8 shadow-lg">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Upload className="h-5 w-5" />
+                  Upload BOM File
+                </CardTitle>
+                <CardDescription>
+                  Upload a CSV BOM file to automatically source parts. The app will search for matching parts 
+                  and fill in LCSC Part #, Manufacturer Part Number, Datasheet, and Description.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {/* File Upload Area */}
+                <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-lg p-8 text-center mb-6">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+                  <FileSpreadsheet className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                  {bomFile ? (
+                    <div className="space-y-2">
+                      <p className="font-medium text-slate-900 dark:text-white">{bomFile.name}</p>
+                      <p className="text-sm text-slate-500">{(bomFile.size / 1024).toFixed(2)} KB</p>
+                      <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
+                        Change File
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-slate-600 dark:text-slate-400">
+                        Drag and drop your BOM CSV file here, or
+                      </p>
+                      <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+                        <Upload className="h-4 w-4 mr-2" />
+                        Select File
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* How it works */}
+                <div className="bg-slate-50 dark:bg-slate-900 rounded-lg p-4 mb-6">
+                  <h4 className="font-medium mb-2">How it works:</h4>
+                  <ol className="text-sm text-slate-600 dark:text-slate-400 space-y-1 list-decimal list-inside">
+                    <li>Upload your BOM CSV (minimum: Reference and Value columns)</li>
+                    <li>The app searches JLCPCB, Digi-Key, and Mouser for matching parts</li>
+                    <li>JLCPCB matches are preferred (China-based, no import needed)</li>
+                    <li>Download the sourced BOM with LCSC Part #, datasheet, and more</li>
+                  </ol>
+                </div>
+
+                {/* Process Button */}
+                <div className="flex gap-4">
+                  <Button 
+                    onClick={handleBOMUpload} 
+                    disabled={!bomFile || bomLoading} 
+                    size="lg"
+                    className="flex-1 md:flex-none"
+                  >
+                    {bomLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Processing BOM...
+                      </>
+                    ) : (
+                      <>
+                        <Search className="h-4 w-4 mr-2" />
+                        Source Parts
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {/* Error Alert */}
+                {bomError && (
+                  <Alert variant="destructive" className="mt-4">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Error</AlertTitle>
+                    <AlertDescription>{bomError}</AlertDescription>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* BOM Results */}
+            {bomResult && (
+              <div className="space-y-6">
+                {/* Results Summary Card */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Check className="h-5 w-5 text-green-500" />
+                      BOM Sourcing Complete
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                      <div className="text-center p-3 bg-slate-50 dark:bg-slate-900 rounded-lg">
+                        <p className="text-2xl font-bold">{bomResult.stats.total}</p>
+                        <p className="text-sm text-muted-foreground">Total Items</p>
+                      </div>
+                      <div className="text-center p-3 bg-green-50 dark:bg-green-950 rounded-lg">
+                        <p className="text-2xl font-bold text-green-600">{bomResult.stats.matched}</p>
+                        <p className="text-sm text-green-600">Matched</p>
+                      </div>
+                      <div className="text-center p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
+                        <p className="text-2xl font-bold text-blue-600">{bomResult.stats.alreadySourced}</p>
+                        <p className="text-sm text-blue-600">Already Sourced</p>
+                      </div>
+                      <div className="text-center p-3 bg-red-50 dark:bg-red-950 rounded-lg">
+                        <p className="text-2xl font-bold text-red-600">{bomResult.stats.notFound}</p>
+                        <p className="text-sm text-red-600">Not Found</p>
+                      </div>
+                      <div className="text-center p-3 bg-yellow-50 dark:bg-yellow-950 rounded-lg">
+                        <p className="text-2xl font-bold text-yellow-600">{bomResult.stats.skipped}</p>
+                        <p className="text-sm text-yellow-600">Skipped (DNP)</p>
+                      </div>
+                    </div>
+
+                    {/* Download Button */}
+                    <Button onClick={handleDownload} size="lg" className="w-full md:w-auto">
+                      <Download className="h-4 w-4 mr-2" />
+                      Download {bomResult.filename}
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* Detailed Results */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Detailed Results</CardTitle>
+                    <CardDescription>
+                      Item-by-item breakdown of sourcing results
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="text-left py-2 px-2">Reference</th>
+                            <th className="text-left py-2 px-2">Value</th>
+                            <th className="text-left py-2 px-2">Status</th>
+                            <th className="text-left py-2 px-2">Matched Part</th>
+                            <th className="text-left py-2 px-2">Stock</th>
+                            <th className="text-left py-2 px-2">Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {bomResult.results.map((item, index) => (
+                            <tr key={index} className="border-b hover:bg-slate-50 dark:hover:bg-slate-900">
+                              <td className="py-2 px-2 font-mono">{item.reference}</td>
+                              <td className="py-2 px-2">{item.value}</td>
+                              <td className="py-2 px-2">
+                                <Badge className={`${statusColors[item.status]} text-white`}>
+                                  {item.status.replace('_', ' ')}
+                                </Badge>
+                              </td>
+                              <td className="py-2 px-2">
+                                {item.matchedPart ? (
+                                  <div>
+                                    <span className="font-medium">{item.matchedPart.manufacturerPartNumber}</span>
+                                    {item.matchedPart.lcscPart && (
+                                      <span className="ml-2 text-blue-600">(LCSC: {item.matchedPart.lcscPart})</span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
+                                )}
+                              </td>
+                              <td className="py-2 px-2">
+                                {item.matchedPart ? (
+                                  <span className={item.matchedPart.stock > 0 ? 'text-green-600' : 'text-red-600'}>
+                                    {item.matchedPart.stock.toLocaleString()}
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
+                                )}
+                              </td>
+                              <td className="py-2 px-2 text-muted-foreground max-w-xs truncate">
+                                {item.notes}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
 
         {/* Instructions Section */}
         <div className="mt-12">
@@ -430,7 +756,7 @@ export default function Home() {
                     <li>1. Go to <a href="https://developer.digikey.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">developer.digikey.com</a></li>
                     <li>2. Create a Digi-Key API account</li>
                     <li>3. Create a new Application</li>
-                    <li>4. Set the Redirect URI to: <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">http://localhost:3000</code></li>
+                    <li>4. Subscribe to ProductInformation V4 API</li>
                     <li>5. Copy the Client ID and Client Secret</li>
                     <li>6. Add to your <code className="bg-slate-100 dark:bg-slate-800 px-1 rounded">.env</code> file:</li>
                   </ol>
