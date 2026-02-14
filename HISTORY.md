@@ -260,3 +260,84 @@ bun run dev
 ---
 
 *This history file should be updated at the start of each new session to maintain continuity.*
+
+---
+
+## Session 2: February 2026
+
+### Bug Fixes and Testing
+
+#### Issue: No Results from All Suppliers
+User reported getting "No Results" from all vendors even after adding API keys.
+
+#### Root Cause Analysis
+
+**Mouser Issue**:
+- **Problem**: Wrong API endpoint - using `/product/search` instead of `/search/keyword`
+- **Problem**: Price parsing failed because prices include "$" prefix (e.g., "$2.05")
+- **Problem**: Stock parsing not using `AvailabilityInStock` field
+
+**DigiKey Issue**:
+- **Problem**: User's credentials are for **Sandbox mode**, not Production
+- **Problem**: Production API returns "Invalid clientId" for sandbox credentials
+- **Finding**: DigiKey sandbox API has limited endpoints - keyword search returns 404
+
+#### Fixes Applied
+
+1. **Mouser Endpoint Fix**:
+   - Changed from `/product/search` to `/search/keyword`
+   - Added `startingRecord` and `searchWithYourSignUpLanguage` to request body
+   - Added `accept: application/json` header
+
+2. **Mouser Price Parsing Fix**:
+   - Strip "$" symbol from price strings before parsing
+   - Use `AvailabilityInStock` field when available for accurate stock counts
+
+3. **DigiKey Sandbox Support**:
+   - Added `DIGIKEY_SANDBOX=true` environment variable
+   - Sandbox mode uses `https://sandbox-api.digikey.com` base URL
+   - **Note**: DigiKey sandbox appears to have limited API support
+
+#### Testing Results
+
+**Mouser** ✅ Working:
+```bash
+curl "http://localhost:3000/api/parts-search?value=100k&suppliers=mouser&limit=3"
+```
+Returns 3+ parts with stock levels and prices (e.g., 7828 total results for "100k")
+
+**JLCPCB** ✅ Working:
+```bash
+curl "http://localhost:3000/api/parts-search?value=100k&footprint=0402&suppliers=jlcpcb"
+```
+Returns 10 parts with LCSC numbers and stock levels
+
+**DigiKey** ⚠️ Sandbox Limited:
+- OAuth token obtained successfully from sandbox
+- Search endpoint returns 404 - sandbox may not support keyword search
+- User may need Production API credentials for full functionality
+
+### Environment Configuration
+
+Updated `.env.example`:
+```env
+DATABASE_URL=file:./db/custom.db
+
+# DigiKey API Configuration
+DIGIKEY_CLIENT_ID=
+DIGIKEY_CLIENT_SECRET=
+# Set to 'true' if using sandbox credentials (default: false)
+DIGIKEY_SANDBOX=true
+
+# Mouser API Configuration
+MOUSER_API_KEY=
+```
+
+### Session 2 Summary
+
+| Item | Status |
+|------|--------|
+| **Mouser API** | ✅ Fixed and working |
+| **JLCPCB API** | ✅ Already working |
+| **DigiKey Sandbox** | ⚠️ Limited - may need production credentials |
+| **Code pushed to GitHub** | ✅ Yes |
