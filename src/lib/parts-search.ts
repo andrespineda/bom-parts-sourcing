@@ -36,13 +36,17 @@ export interface SearchParams {
 class DigiKeyClient {
   private clientId: string;
   private clientSecret: string;
+  private sandbox: boolean;
   private accessToken: string | null = null;
   private tokenExpiry: number = 0;
-  private apiBase = 'https://api.digikey.com';
+  private apiBase: string;
 
   constructor() {
     this.clientId = process.env.DIGIKEY_CLIENT_ID || '';
     this.clientSecret = process.env.DIGIKEY_CLIENT_SECRET || '';
+    // Check if using sandbox (set DIGIKEY_SANDBOX=true for sandbox mode)
+    this.sandbox = process.env.DIGIKEY_SANDBOX === 'true';
+    this.apiBase = this.sandbox ? 'https://sandbox-api.digikey.com' : 'https://api.digikey.com';
   }
 
   isConfigured(): boolean {
@@ -59,6 +63,8 @@ class DigiKeyClient {
       throw new Error('DigiKey API credentials not configured');
     }
 
+    console.log('[DigiKey] Getting new access token (sandbox:', this.sandbox, ')');
+
     const response = await fetch(`${this.apiBase}/v1/oauth2/token`, {
       method: 'POST',
       headers: {
@@ -73,6 +79,7 @@ class DigiKeyClient {
 
     if (!response.ok) {
       const error = await response.text();
+      console.error('[DigiKey] Auth failed:', error);
       throw new Error(`DigiKey auth failed: ${error}`);
     }
 
@@ -81,6 +88,7 @@ class DigiKeyClient {
     // Set expiry with 5 minute buffer
     this.tokenExpiry = Date.now() + (data.expires_in - 300) * 1000;
 
+    console.log('[DigiKey] Token obtained successfully');
     return this.accessToken!;
   }
 
@@ -426,19 +434,26 @@ class MouserClient {
   }
 
   private parsePart(part: any, params: SearchParams): PartSearchResult {
-    // Extract stock
+    // Extract stock - try AvailabilityInStock first, then parse Availability string
     let stock = 0;
-    const availability = part.Availability || '';
-    const stockMatch = availability.match(/(\d+)/);
-    if (stockMatch) {
-      stock = parseInt(stockMatch[1]);
+    if (part.AvailabilityInStock) {
+      stock = parseInt(part.AvailabilityInStock) || 0;
+    } else {
+      const availability = part.Availability || '';
+      const stockMatch = availability.match(/(\d+)/);
+      if (stockMatch) {
+        stock = parseInt(stockMatch[1]);
+      }
     }
 
-    // Extract price
+    // Extract price - handle "$2.05" format
     let price = 0;
     const priceBreaks = part.PriceBreaks || [];
     if (priceBreaks.length > 0) {
-      price = parseFloat(priceBreaks[0].Price?.replace(/,/g, '') || '0');
+      const priceStr = priceBreaks[0].Price || '0';
+      // Remove $ and commas, then parse
+      const cleanPrice = priceStr.replace(/[$,]/g, '');
+      price = parseFloat(cleanPrice) || 0;
     }
 
     return {
