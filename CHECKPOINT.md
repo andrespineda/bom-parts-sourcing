@@ -173,8 +173,22 @@ git add . && git commit -m "message" && git push origin main
 | Repository | Purpose | Status |
 |------------|---------|--------|
 | [bom-parts-sourcing](https://github.com/andrespineda/bom-parts-sourcing) | This project (server-side API) | ✅ Active |
-| [InteractiveHtmlBom-Enhanced](https://github.com/andrespineda/InteractiveHtmlBom-Enhanced) | KiCad plugin with part search | ⚠️ CORS bug |
+| [InteractiveHtmlBom-Enhanced](https://github.com/andrespineda/InteractiveHtmlBom-Enhanced) | KiCad plugin with part search | ✅ Updated - uses this API |
 | [bom-sourcing-utility](https://github.com/andrespineda/bom-sourcing-utility) | Python CLI for BOM sourcing | ✅ Complete |
+
+---
+
+## 🔌 KiCad Plugin Integration
+
+The **InteractiveHtmlBom-Enhanced** plugin now uses this API for part searches:
+
+1. Install the plugin in KiCad
+2. Start the BOM Parts Sourcing API: `bun run dev`
+3. Generate a BOM in KiCad
+4. Click "🔍 Parts" button in the BOM HTML
+5. Search across JLCPCB, Digi-Key, and Mouser
+
+**Configuration**: The plugin connects to `http://localhost:3000` by default. Change via `--api-url` flag.
 
 ---
 
