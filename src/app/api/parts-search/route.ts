@@ -8,6 +8,18 @@ import {
   type SearchParams 
 } from '@/lib/parts-search';
 
+// CORS headers for local file access (file://)
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+// Handle OPTIONS preflight requests
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: corsHeaders });
+}
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   
@@ -54,7 +66,7 @@ export async function GET(request: NextRequest) {
       query: params,
       results,
       configured: getConfigurationStatus(),
-    });
+    }, { headers: corsHeaders });
   } catch (error) {
     console.error('Parts search error:', error);
     return NextResponse.json(
@@ -63,7 +75,7 @@ export async function GET(request: NextRequest) {
         error: error instanceof Error ? error.message : 'Unknown error',
         configured: getConfigurationStatus(),
       },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }
@@ -114,7 +126,7 @@ export async function POST(request: NextRequest) {
       query: params,
       results,
       configured: getConfigurationStatus(),
-    });
+    }, { headers: corsHeaders });
   } catch (error) {
     console.error('Parts search error:', error);
     return NextResponse.json(
@@ -123,7 +135,7 @@ export async function POST(request: NextRequest) {
         error: error instanceof Error ? error.message : 'Unknown error',
         configured: getConfigurationStatus(),
       },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }

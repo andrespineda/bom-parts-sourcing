@@ -6,6 +6,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { searchAllSuppliers, PartSearchResult, getConfigurationStatus } from '@/lib/parts-search';
 
+// CORS headers for local file access (file://)
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+// Handle OPTIONS preflight requests
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: corsHeaders });
+}
+
 // BOM row interface
 interface BOMRow {
   Reference: string;
@@ -489,12 +501,12 @@ export async function POST(request: NextRequest) {
         } : null
       })),
       csv: outputCSV
-    });
+    }, { headers: corsHeaders });
   } catch (error) {
     console.error('BOM upload error:', error);
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
+      { status: 500, headers: corsHeaders }
     );
   }
 }

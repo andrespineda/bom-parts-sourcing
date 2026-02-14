@@ -1,6 +1,18 @@
 import { NextResponse } from 'next/server';
 import { getConfigurationStatus } from '@/lib/parts-search';
 
+// CORS headers for local file access (file://)
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+// Handle OPTIONS preflight requests
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: corsHeaders });
+}
+
 export async function GET() {
   const config = getConfigurationStatus();
   
@@ -45,5 +57,5 @@ export async function GET() {
         ],
       },
     },
-  });
+  }, { headers: corsHeaders });
 }
